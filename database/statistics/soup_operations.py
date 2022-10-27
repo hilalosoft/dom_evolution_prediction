@@ -1,5 +1,11 @@
+import os
+
 import pandas as pd
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException, InvalidSelectorException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 
 considered_tag_dictionary = {"id": 0, "string": 0, "ul": 0, "li": 0, "h1": 0, "h2": 0, "h3": 0, "h4": 0, "h5": 0,
                              "div": 0
@@ -83,62 +89,200 @@ def cal_depth(soup, max_depth=1, flag=False):
     return count / max_depth
 
 
-def generate_vector(node, position, depth, nr_siblings, nr_children, xpath, siblings):
-    vector = [node, position, depth, nr_siblings, nr_children, xpath, siblings]
+def generate_vector(node, timestamp, position, depth, nr_siblings, nr_children, xpath, siblings, changed):
+    vector = [node, timestamp, position, depth, nr_siblings, nr_children, xpath, siblings, changed]
     return vector
 
 
-def generate_vectors_from_navigable_string(soup, index, max_depth):
+# process manager
+class DriverObject:
+    driver = None
+    options = Options()
+    filename = "comparing.html"
+
+    def __init__(self):
+        self.options.add_argument("start-maximized")
+        self.options.add_argument("enable-automation")
+        self.options.add_argument("--headless")
+        self.options.add_argument("--no-sandbox")
+        self.options.add_argument("--disable-dev-shm-usage")
+        self.options.add_argument("--disable-browser-side-navigation")
+        self.options.add_argument('--headless')
+        self.options.add_argument('--disable-gpu')  # Last I checked this was necessary.
+        self.driver = webdriver.Chrome(options=self.options)
+        self.driver.set_page_load_timeout(120)
+
+    def get_page(self, dom):
+        textfile = open(os.getcwd() + self.filename, "w", encoding='utf-8')
+        a = textfile.write(dom)
+        textfile.close()
+        self.driver.get(os.getcwd() + self.filename)
+
+    def save_page(self, save_path):
+        self.driver.save_screenshot(save_path)
+
+    def close(self):
+        self.driver.close()
+
+    def element_changed(self, xpath, soup, attribute=None, text_content=None):
+        try:
+            elem = self.driver.find_element(By.XPATH, xpath)
+            if attribute:
+                if isinstance(text_content, list):
+                    attribute_string = ""
+                    for value in text_content:
+                        attribute_string = attribute_string + value
+                else:
+                    attribute_string = text_content
+                attribute_value = elem.get_attribute(attribute)
+                if attribute_value == attribute_string:
+                    return False
+                else:
+                    return True
+            if text_content:
+                if elem.text == text_content:
+                    return False
+                else:
+                    return True
+            if elem.tag_name == soup.name:
+                return False
+            else:
+                return True
+        except NoSuchElementException as e:
+            return True
+        except InvalidSelectorException as e:
+            return False
+
+
+def generate_vectors_from_navigable_string(next_dom, timestamp, soup, index, max_depth):
     siblings_dict = considered_tag_dictionary.copy()
-    vector = generate_vector("textual_content", index, cal_depth(soup, max_depth), 0, 0, xpath_soup(soup),
-                             siblings_dict)
+    xpath = xpath_soup(soup)
+    changed = element_changed(next_dom, xpath, soup, text_content=soup.string)
+    vector = generate_vector("textual_content", timestamp, index, cal_depth(soup, max_depth), 0, 0, xpath,
+                             siblings_dict, changed)
     return vector
 
 
-def generate_vectors_from_soup(soup, max_depth):
+def generate_vectors_from_soup(next_dom, timestamp, soup, max_depth):
     nr_of_children = len(soup.contents) + len(soup.attrs)
     position, siblings_vector = get_siblings_soup(soup)
     xpath = xpath_soup(soup)
     depth = cal_depth(soup, max_depth)
     vector_list = []
-    for vector in generate_vectors_for_attr(soup, max_depth):
+    for vector in generate_vectors_for_attr(next_dom, timestamp, soup, max_depth, xpath):
         vector_list.append(vector)
+    changed = element_changed(next_dom, xpath, soup)
     vector_list.append(
-        generate_vector(soup.name, position, depth, len(siblings_vector), nr_of_children, xpath, siblings_vector))
+        generate_vector(soup.name, timestamp, position, depth, len(siblings_vector), nr_of_children, xpath,
+                        siblings_vector,
+                        changed))
     return vector_list
 
 
-def generate_vectors_for_attr(soup, max_depth):
+def generate_vectors_for_attr(next_dom, timestamp, soup, max_depth, xpath):
     final_vectors = []
     for attr in soup.attrs:
         if attr == "class":
             nr_of_children = len(soup.attrs[attr])
         else:
             nr_of_children = 1
+        value = soup.attrs.get(attr)
+        if attr == "href" or attr == "src":
+            links = soup.attrs[attr].split('//')
+            if len(links) > 2:
+                weblinks = links[1][:15]
+                if weblinks == "web.archive.org":
+                    value = links[2]
         siblings_vector = get_siblings_attr(soup, attr)
-        xpath = xpath_soup(soup) + "/" + str(soup.attrs[attr])
+        # xpath = xpath + "/" + attr
         depth = cal_depth(soup, max_depth, True)
+        changed = element_changed(next_dom, xpath, soup, attribute=attr, text_content=value)
         final_vectors.append(
-            generate_vector(attr + str(soup.attrs[attr]), 0, depth, len(soup.attrs) - 1, 0, xpath, siblings_vector))
+            generate_vector(attr + str(value), timestamp, 0, depth, len(soup.attrs) - 1, 0, xpath,
+                            siblings_vector,
+                            changed))
     return final_vectors
 
 
-def create_feature_csv(feature_vectors, project_name):
-    header = ["node", "position", "depth", "nr_siblings", "nr_children", "xpath", "siblings"]
-    full_list = []
-    for feature_vector in feature_vectors:
-        full_list.append(feature_vector)
-    df_tags = pd.DataFrame(full_list)
-    df_tags.to_csv('data/feature_list_' + str(project_name) + '.csv', header=header, index=False)
-    pass
+def element_changed(next_dom, xpath, soup, attribute=None, text_content=None):
+    element_to_compare = find_element_by_xpath_soup(xpath, next_dom)
+    if element_to_compare:
+        if attribute:
+            if attribute in element_to_compare.attrs:
+                if attribute == "href" or attribute == "src":
+                    links = element_to_compare.attrs[attribute].split('//')
+                    if len(links) > 2:
+                        weblinks = links[1][:15]
+                        if weblinks == "web.archive.org":
+                            attribute_value = links[2]
+                        else:
+                            attribute_value = element_to_compare.attrs[attribute]
+                    else:
+                        attribute_value = element_to_compare.attrs[attribute]
+                else:
+                    attribute_value = element_to_compare.attrs[attribute]
+            else:
+                return True
+            if attribute_value == text_content:
+                return False
+            else:
+                return True
+        if text_content:
+            if element_to_compare.string == soup.string:
+                return False
+            else:
+                return True
+        if element_to_compare.name == soup.name:
+            return False
+        else:
+            return True
+    else:
+        return True
+
+
+def find_element_by_xpath_soup(xpath, next_dom):
+    dom_element = next_dom
+    xpath_list = xpath.split('/')[1:]
+    flag = True
+    for tag in xpath_list:
+        if tag.find('[') != -1:
+            position = int(tag[tag.find('[') + 1:tag.find(']')])
+            tag = tag[:tag.find('[')]
+        else:
+            position = None
+        count_position = 1
+        for element in dom_element.contents:
+            if position is None:
+                if element.name == tag:
+                    dom_element = element
+                    flag = True
+                    break
+                else:
+                    flag = False
+            else:
+                if element.name == tag:
+                    if position == count_position:
+                        dom_element = element
+                        flag = True
+                        break
+                    else:
+                        count_position += 1
+                else:
+                    flag = False
+    if flag:
+        return dom_element
+    else:
+        return False
 
 
 class featureClass:
     feature_vectors = []
-    none_tag = "textual_conent"
+    none_tag = "textual_content"
     max_depth = -1
-    dom1 = None
-    dom2 = None
+    next_dom = None
+    current_timestamp = None
+    nr_elements = 0
+    nr_changed_elements = 0
 
     def __init__(self):
         self.feature_vectors = []
@@ -148,15 +292,33 @@ class featureClass:
         self.feature_vectors = []
         self.max_depth = -1
 
-    def generate_feature_vector_dom(self, dom_list, project_name):
-        for dom in dom_list:
-            parsed_dom = BeautifulSoup(dom, 'html.parser')
+    def generate_feature_vector_dom(self, dom_list, timestamp_list, project_name):
+        skipped_doms = []
+        for i in range(0, len(dom_list) - 1):
+            self.current_timestamp = timestamp_list[i]
+            parsed_dom = BeautifulSoup(dom_list[i], 'html.parser')
+            parsed_dom2 = BeautifulSoup(dom_list[i + 1], 'html.parser')
+            self.next_dom = parsed_dom2
             self.max_depth = cal_max_depth(parsed_dom)
             for tag in parsed_dom.contents:
                 if tag.name != "html":
                     continue
-                self.recursive_soup(tag)
-        create_feature_csv(self.feature_vectors, project_name)
+                self.compare_dom_recursive(tag)
+            if self.nr_changed_elements / self.nr_elements > 0.7:
+                skipped_doms.append(self.current_timestamp)
+        self.create_feature_csv(project_name, skipped_doms)
+
+    def create_feature_csv(self, project_name, skipped_doms):
+        header = ["node", "timestamp", "position", "depth", "nr_siblings", "nr_children", "xpath", "siblings",
+                  "changed"]
+        full_list = []
+        for feature_vector in self.feature_vectors:
+            if feature_vector[1] in skipped_doms:
+                continue
+            full_list.append(feature_vector)
+        df_tags = pd.DataFrame(full_list)
+        df_tags.to_csv('data/feature_list_' + str(project_name) + '.csv', header=header, index=False)
+        pass
 
     def recursive_soup(self, element):
         if str(type(element)) != "<class 'bs4.element.Tag'>":
@@ -169,20 +331,37 @@ class featureClass:
             if str(type(child)) == "<class 'bs4.element.NavigableString'>":
                 if child == "\n":
                     continue
-                vector = generate_vectors_from_navigable_string(element, child_index, self.max_depth)
+                vector = generate_vectors_from_navigable_string(element,
+                                                                child_index / len(element.contents), self.max_depth)
                 self.feature_vectors.append(vector)
             self.recursive_soup(child)
         for feature_vector in generate_vectors_from_soup(element, self.max_depth):
             self.feature_vectors.append(feature_vector)
 
-    def set_comparing_doms(self, dom1, dom2):
-        self.dom1 = BeautifulSoup(dom1, 'html.parser')
-        self.dom2 = BeautifulSoup(dom2, 'html.parser')
+    def set_comparing_dom(self, dom):
+        self.next_dom = BeautifulSoup(dom, 'html.parser')
+
+    # def compare_dom_recursive(self, element, DO):
+    #     if str(type(element)) != "<class 'bs4.element.Tag'>":
+    #         return
+    #     if element.name == "head" or element.name == "script":
+    #         return
+    #     child_index = 0
+    #     for child in element.contents:
+    #         child_index += 1
+    #         if str(type(child)) == "<class 'bs4.element.NavigableString'>":
+    #             if child == "\n":
+    #                 continue
+    #             vector = generate_vectors_from_navigable_string(DO, element, child_index, self.max_depth)
+    #             self.feature_vectors.append(vector)
+    #         self.compare_dom_recursive(child, DO)
+    #     for feature_vector in generate_vectors_from_soup(DO, element, self.max_depth):
+    #         self.feature_vectors.append(feature_vector)
 
     def compare_dom_recursive(self, element):
         if str(type(element)) != "<class 'bs4.element.Tag'>":
             return
-        if element.name == "head":
+        if element.name == "head" or element.name == "script":
             return
         child_index = 0
         for child in element.contents:
@@ -190,8 +369,17 @@ class featureClass:
             if str(type(child)) == "<class 'bs4.element.NavigableString'>":
                 if child == "\n":
                     continue
-                vector = generate_vectors_from_navigable_string(element, child_index, self.max_depth)
-                self.feature_vectors.append(vector)
-            self.recursive_soup(child)
-        for feature_vector in generate_vectors_from_soup(element, self.max_depth):
+                self.nr_elements += 1
+                feature_vector = generate_vectors_from_navigable_string(self.next_dom, self.current_timestamp, element,
+                                                                        child_index / len(element.contents),
+                                                                        self.max_depth)
+                if feature_vector[8]:
+                    self.nr_changed_elements += 1
+                self.feature_vectors.append(feature_vector)
+            self.compare_dom_recursive(child)
+        for feature_vector in generate_vectors_from_soup(self.next_dom, self.current_timestamp, element,
+                                                         self.max_depth):
+            self.nr_elements += 1
+            if feature_vector[8]:
+                self.nr_changed_elements += 1
             self.feature_vectors.append(feature_vector)

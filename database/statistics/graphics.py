@@ -7,9 +7,9 @@ from pathlib import Path
 from matplotlib.dates import DateFormatter
 from matplotlib import rc
 
-rc('text', usetex=True)
-
 from pandas.plotting import register_matplotlib_converters
+
+rc('text', usetex=True)
 
 register_matplotlib_converters()
 
@@ -46,7 +46,7 @@ def lineplot(data, name, x, y, y_label='', hue=None, x_label='', y_lim=None, fig
     g.xaxis.set_major_formatter(DateFormatter('%m-%Y'))
     g.xaxis.set_major_locator(plt.MaxNLocator(5))
 
-    if y_lim != None and len(y_lim) == 2:
+    if y_lim is not None and len(y_lim) == 2:
         plt.ylim(y_lim)
 
     for x_pos in v_lines:
@@ -73,7 +73,7 @@ def boxplot(data, name, x, y, y_label='', hue=None, x_label='', fig_size=(6, 4),
     plt.ylabel(y_label)
     plt.xlabel(x_label)
 
-    if x_lim != None and len(x_lim) == 2:
+    if x_lim is not None and len(x_lim) == 2:
         plt.xlim(x_lim)
 
     _setup_legend(data, legend_pos, hue)
@@ -87,7 +87,7 @@ def violinplot(data, name, x, y, y_label='', hue=None, x_label='', fig_size=(6, 
     fig = plt.figure(figsize=fig_size)
     sns.set(style="white", color_codes=True, font_scale=FONT_SCALE)
 
-    if split == None:
+    if split is None:
         split = hue and len(data[hue].unique()) == 2
 
     palette = _color_palette(data, hue)
@@ -104,7 +104,7 @@ def violinplot(data, name, x, y, y_label='', hue=None, x_label='', fig_size=(6, 
     plt.ylabel(y_label)
     plt.xlabel(x_label)
 
-    if x_lim != None and len(x_lim) == 2:
+    if x_lim is not None and len(x_lim) == 2:
         plt.xlim(x_lim)
 
     _setup_legend(data, legend_pos, hue)
@@ -157,10 +157,10 @@ def barplot(data, name, x, y, y_label='', hue=None, x_label='', fig_size=(6, 4),
     plt.ylabel(y_label)
     plt.xlabel(x_label)
 
-    if x_lim != None and len(x_lim) == 2:
+    if x_lim is not None and len(x_lim) == 2:
         plt.xlim(x_lim)
 
-    if y_lim != None and len(y_lim) == 2:
+    if y_lim is not None and len(y_lim) == 2:
         plt.xlim(y_lim)
 
     plt.savefig(_get_filename(name), dpi=DPI, bbox_inches='tight')

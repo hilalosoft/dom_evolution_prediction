@@ -114,20 +114,23 @@ def generate_graphics_dom_list(dom_list, project_name):
 
 
 def process(chunk):
-    print(type(chunk))
     count = 0
     dom_list = []
+    timestamp_list = []
     fc = so.featureClass()
     project_name = chunk.iloc[1][3]
     for index, row in chunk.iterrows():
         print(row[0], row[2], row[3], row[4], row[5], row[6], row[7])
+        if row[3] != project_name:
+            break
+            # project_name = row[3]
         # generate_statistics_from_dom(row[1], row[7])
         dom_list.append(row[1])
-        # compressed = lz4.frame.compress(bytes(row[1], 'utf-8'))
-        # decompressed = lz4.frame.decompress(compressed)
-        #         print(decompressed.decode()==row[1])
+        timestamp_list.append(row[7])
+
         count += 1
-    fc.generate_feature_vector_dom(dom_list, project_name)
+    if len(dom_list) > 2:
+        fc.generate_feature_vector_dom(dom_list,timestamp_list, project_name)
     # generate_graphics_dom_list(dom_list, project_name)
     print('process number: ' + str(count))
 
