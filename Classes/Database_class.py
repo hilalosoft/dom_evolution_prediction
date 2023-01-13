@@ -6,7 +6,7 @@ from windyquery import DB
 # !/usr/bin/python
 from configparser import ConfigParser
 
-import DOM_class
+from Classes import DOM_class
 
 
 def config_db(filename=os.getcwd() + '\\database\\database.ini', section='postgresql'):

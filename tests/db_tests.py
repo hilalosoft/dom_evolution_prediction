@@ -1,8 +1,7 @@
 import unittest
 
-
-import DOM_class
-from DOM_class import DOMClass
+from Classes import DOM_class
+from Classes.DOM_class import DOMClass
 
 
 class DOMClassTestCase(unittest.TestCase):

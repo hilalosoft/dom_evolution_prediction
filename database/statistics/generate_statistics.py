@@ -1,8 +1,10 @@
+import os
+
 import pandas as pd
 from bs4 import BeautifulSoup
 import soup_operations as so
 import database.statistics.graphics as graphics
-from database.Database_class import get_websites, get_history
+from Classes.Database_class import get_websites, get_history
 
 
 def generate_statistics_from_dom(dom, timestamp):
@@ -119,9 +121,15 @@ def process(chunk):
     timestamp_list = []
     fc = so.featureClass()
     project_name = chunk.iloc[1][3]
-    for index, row in chunk.iterrows():
+    newfile_list = []
+    file_list = os.listdir(os.getcwd() + "\data")
+    for file in file_list:
+        newfile_list.append(file[13:len(file) - 4])
+    for index, row in chunk.sort_values(by=chunk.columns[7]).iterrows():
+        if str(row[3]) in newfile_list:
+            continue
         print(row[0], row[2], row[3], row[4], row[5], row[6], row[7])
-        if row[3] != project_name:
+        if str(row[3]) != project_name:
             break
             # project_name = row[3]
         # generate_statistics_from_dom(row[1], row[7])
@@ -130,7 +138,7 @@ def process(chunk):
 
         count += 1
     if len(dom_list) > 2:
-        fc.generate_feature_vector_dom(dom_list,timestamp_list, project_name)
+        fc.generate_feature_vector_dom(dom_list, timestamp_list, project_name)
     # generate_graphics_dom_list(dom_list, project_name)
     print('process number: ' + str(count))
 

@@ -7,8 +7,7 @@ from database.statistics import graphics
 
 def main():
     filename = "filename.csv"
-    chunksize = 100
-    # chunksize = 10
+    chunksize = 1000
     count = 0
     # get_websites
     with pd.read_csv(filename, chunksize=chunksize) as reader:
@@ -35,5 +34,5 @@ def generate_graphics():
     # graphics.countplot(df, "tags", x='string')
 
 
-generate_graphics()
-# main()
+# generate_graphics()
+main()
