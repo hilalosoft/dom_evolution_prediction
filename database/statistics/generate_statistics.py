@@ -1,10 +1,14 @@
 import os
-
+import random
 import pandas as pd
 from bs4 import BeautifulSoup
-import soup_operations as so
+# from Classes.PredictionClass import PredictionClass
 import database.statistics.graphics as graphics
-from Classes.Database_class import get_websites, get_history
+import soup_operations as so
+import Classes.PredictionClass as PC
+
+
+# from Classes.Database_class import get_websites, get_history
 
 
 def generate_statistics_from_dom(dom, timestamp):
@@ -13,7 +17,7 @@ def generate_statistics_from_dom(dom, timestamp):
     depth_list = []
     tag_list = []
     count_tags = 0
-    max_depth = so.cal_max_depth(parsed_dom)
+    # PC = PredictionClass(parsed_dom)
 
     for child in parsed_dom.descendants:
         if child.name is None:
@@ -23,7 +27,7 @@ def generate_statistics_from_dom(dom, timestamp):
             continue
         count_tags += 1
         position, siblings = so.get_siblings_soup(child)
-        depth_list.append((child.name, so.cal_depth(child, max_depth), so.xpath_soup(child), position, siblings))
+        depth_list.append((child.name, so.cal_length(child, max_depth), so.xpath_soup(child), position, siblings))
         if child.name in tag_dictionary:
             tag_dictionary[child.name] += 1
         else:
@@ -55,7 +59,7 @@ def generate_graphics_dom_list(dom_list, project_name):
         dom_dictionary = {}
         count_tags = 0
         parsed_dom = BeautifulSoup(dom, 'html.parser')
-        max_depth = so.cal_max_depth(parsed_dom)
+        max_depth = so.cal_max_length(parsed_dom)
         for child in parsed_dom.descendants:
             if str(type(child)) == "<class 'bs4.element.Script'>" or str(type(child)) == "<class 'bs4.element" \
                                                                                          ".Stylesheet'>" or str(
@@ -115,39 +119,49 @@ def generate_graphics_dom_list(dom_list, project_name):
     # graphics.violinplot(df_tags, "tag_list_", x='Occurrences', y="tag")
 
 
-def process(chunk):
-    count = 0
+def preprocess_dom_locators(dom, model_name,scaled):
+    soup = BeautifulSoup(dom, 'html.parser')
+    extract_elements = soup.find_all()
+    exclude_tags = ["a","body","html","link","meta","script","head"]
+
+    # Use a list comprehension to filter out excluded tags
+    filtered_elements = [element for element in extract_elements if element.name not in exclude_tags]
+
+    if len(filtered_elements) >= 50:
+        elements = random.sample(filtered_elements, 50)
+    elif len(filtered_elements) >= 30:
+        elements = random.sample(filtered_elements, len(filtered_elements))
+    else:
+        return [], [], 0, 0, len(extract_elements)
+    locators_RELOC, time_RELOC = PC.generate_locators_prediction_model(soup, elements, model_name,scaled)
+    locators_relative_xpath, time_SEL = so.generate_locators_relative_xpath(elements)
+    assert len(locators_RELOC) == len(locators_relative_xpath), f"{len(locators_RELOC)},{len(locators_relative_xpath)}"
+    # locators_relative_xpath = PC.generate_locators_xpath(elements)
+    # num_of_elements= len(soup)
+    return locators_RELOC, locators_relative_xpath, time_RELOC, time_SEL,len(extract_elements)
+
+
+def process(project_history):
     dom_list = []
     timestamp_list = []
     fc = so.featureClass()
-    project_name = chunk.iloc[1][3]
-    newfile_list = []
-    file_list = os.listdir(os.getcwd() + "\data")
-    for file in file_list:
-        newfile_list.append(file[13:len(file) - 4])
-    for index, row in chunk.sort_values(by=chunk.columns[7]).iterrows():
-        if str(row[3]) in newfile_list:
-            continue
-        print(row[0], row[2], row[3], row[4], row[5], row[6], row[7])
-        if str(row[3]) != project_name:
-            break
-            # project_name = row[3]
+    project_name = project_history[0][3]
+    project_history.sort(key=lambda x: x[7])
+    print("processing " + project_name)
+    for row in project_history:
         # generate_statistics_from_dom(row[1], row[7])
         dom_list.append(row[1])
         timestamp_list.append(row[7])
-
-        count += 1
     if len(dom_list) > 2:
         fc.generate_feature_vector_dom(dom_list, timestamp_list, project_name)
+    # print(str(len(dom_list)) + " doms out of from " + str(len(project_history)))
     # generate_graphics_dom_list(dom_list, project_name)
-    print('process number: ' + str(count))
 
-
-def process_from_database():
-    websites = get_websites()
-    dom_list = []
-    for website in websites:
-        website_history = get_history(website)
-        for version in website_history:
-            dom_list.append(version[0])
-        generate_graphics_dom_list(dom_list, website)
+# def process_from_database():
+#     websites = get_websites()
+#     dom_list = []
+#     for website in websites:
+#         website_history = get_history(website)
+#         for version in website_history:
+#             dom_list.append(version[0])
+#         generate_graphics_dom_list(dom_list, website)

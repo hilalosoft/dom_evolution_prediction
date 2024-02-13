@@ -1,12 +1,16 @@
+import json
 import os
-import psycopg2
 import asyncio
 
 from windyquery import DB
 # !/usr/bin/python
 from configparser import ConfigParser
 
+import configparser
+
 from Classes import DOM_class
+import psycopg2
+from sshtunnel import SSHTunnelForwarder
 
 
 def config_db(filename=os.getcwd() + '\\database\\database.ini', section='postgresql'):
@@ -25,9 +29,6 @@ def config_db(filename=os.getcwd() + '\\database\\database.ini', section='postgr
         raise Exception('Section {0} not found in the {1} file'.format(section, filename))
 
     return db
-
-
-# !/usr/bin/python
 
 
 def connect_to_db():
@@ -50,6 +51,81 @@ def connect_to_db():
         asyncio.get_event_loop().run_until_complete(db.stop())
         print('Database connection closed.')
 
+
+def get_progress():
+    db = DB()
+    current_progress = []
+    try:
+        params = config_db()
+        print('Connecting to the PostgreSQL database...')
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
+                                                               max_inactive_connection_lifetime=100))
+
+        current_progress = asyncio.get_event_loop().run_until_complete(progress_query(db))
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        asyncio.get_event_loop().run_until_complete(db.stop())
+        print('Database connection closed after getting progress.')
+        return current_progress
+
+
+# def experiment_insert(dom):
+#     db = DB()
+#     try:
+#         # read connection parameters
+#         params = config_db()
+#
+#         # connect to the PostgreSQL server
+#         print('Connecting to the PostgreSQL database...')
+#         # conn = psycopg2.connect(**params)
+#         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+#         asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
+#                                                                max_inactive_connection_lifetime=100))
+#         asyncio.get_event_loop().run_until_complete(insert_list(db, dom))
+#     except (Exception, psycopg2.DatabaseError) as error:
+#         print(error)
+#     finally:
+#         asyncio.get_event_loop().run_until_complete(db.stop())
+#         print('Database connection closed.')
+
+
+def get_websites():
+    db = DB()
+    websites = []
+    try:
+        params = config_db()
+        print('Connecting to the PostgreSQL database...')
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
+                                                               max_inactive_connection_lifetime=100))
+
+        websites = asyncio.get_event_loop().run_until_complete(websites_query(db))
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+    finally:
+        asyncio.get_event_loop().run_until_complete(db.stop())
+        print('Database connection closed after getting websites.')
+        return websites
+
+
+# def get_history(project_name):
+#     db = DB()
+#     history = []
+#     try:
+#         params = config_db()
+#         print('Connecting to the PostgreSQL database...')
+#         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+#         asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
+#                                                                max_inactive_connection_lifetime=100))
+#         history = asyncio.get_event_loop().run_until_complete(entire_history_query(db, project_name))
+#     except (Exception, psycopg2.DatabaseError) as error:
+#         print(error)
+#     finally:
+#         asyncio.get_event_loop().run_until_complete(db.stop())
+#         print('Database connection closed after getting websites.')
+#         return history
 
 async def insert_to_db_query(db):
     data_list = DOM_class.get_dom_list()
@@ -80,47 +156,8 @@ async def insert_to_db_query(db):
     return
 
 
-def get_progress():
-    db = DB()
-    current_progress = []
-    try:
-        params = config_db()
-        print('Connecting to the PostgreSQL database...')
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
-                                                               max_inactive_connection_lifetime=100))
-
-        current_progress = asyncio.get_event_loop().run_until_complete(progress_query(db))
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
-    finally:
-        asyncio.get_event_loop().run_until_complete(db.stop())
-        print('Database connection closed after getting progress.')
-        return current_progress
-
-
 async def progress_query(db):
     return await db.table('progress').select('*')
-
-
-def experiment_insert(dom):
-    db = DB()
-    try:
-        # read connection parameters
-        params = config_db()
-
-        # connect to the PostgreSQL server
-        print('Connecting to the PostgreSQL database...')
-        # conn = psycopg2.connect(**params)
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
-                                                               max_inactive_connection_lifetime=100))
-        asyncio.get_event_loop().run_until_complete(insert_list(db, dom))
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
-    finally:
-        asyncio.get_event_loop().run_until_complete(db.stop())
-        print('Database connection closed.')
 
 
 async def insert_list(db, dom):
@@ -134,25 +171,6 @@ async def insert_list(db, dom):
     await db.table('dom').insert(data_dict)
 
 
-def get_websites():
-    db = DB()
-    websites = []
-    try:
-        params = config_db()
-        print('Connecting to the PostgreSQL database...')
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
-                                                               max_inactive_connection_lifetime=100))
-
-        websites = asyncio.get_event_loop().run_until_complete(websites_query(db))
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
-    finally:
-        asyncio.get_event_loop().run_until_complete(db.stop())
-        print('Database connection closed after getting websites.')
-        return websites
-
-
 async def websites_query(db):
     result_list = []
     result = await db.raw('select Distinct project from dom;')
@@ -161,27 +179,63 @@ async def websites_query(db):
     return result_list
 
 
-def get_history(project_name):
-    db = DB()
-    history = []
-    try:
-        params = config_db()
-        print('Connecting to the PostgreSQL database...')
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-        asyncio.get_event_loop().run_until_complete(db.connect("dom", config=params, default=True,
-                                                               max_inactive_connection_lifetime=100))
-        history = asyncio.get_event_loop().run_until_complete(entire_history_query(db,project_name))
-    except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
-    finally:
-        asyncio.get_event_loop().run_until_complete(db.stop())
-        print('Database connection closed after getting websites.')
-        return history
-
-
 async def entire_history_query(db, project_name):
     result_list = []
     # result = await db.table('dom').select('*').where('project', project_name)
     result = await db.raw('select * from dom where upper(project) = ' + "project_name" + ';')
     for row in result:
         result_list.append((row['dom'], row['project']))
+
+def read_credentials_from_ini(filename='database/config.ini'):
+    config = ConfigParser()
+    config.read(filename)
+    ssh_username = config['SSH']['Username']
+    ssh_password = config['SSH']['Password']
+    db_password = config['DB']['Password']
+    return ssh_username, ssh_password, db_password
+
+
+def query_from_db(query="SELECT distinct  project FROM dom"):
+    ssh_username, ssh_password, db_password = read_credentials_from_ini()
+    with SSHTunnelForwarder(
+            ('dompm', 22),
+            ssh_password=ssh_password,
+            ssh_username=ssh_username,
+            remote_bind_address=('127.0.0.1', 5432)) as server:
+        conn = psycopg2.connect("dbname=dom user=postgres password={}".format(db_password), port=server.local_bind_port)
+        cur = conn.cursor()
+        cur.execute(query)
+    records = cur.fetchall()
+    return records
+
+
+# def query_from_db(query="SELECT distinct  project FROM dom"):
+#         # params = config_db()
+#         # Connect to your postgres DB
+#
+#         # Open a cursor to perform database operations
+#         cur = conn.cursor()
+#
+#         # Execute a query
+#         cur.execute(query)
+#
+#     # Retrieve query results
+#     records = cur.fetchall()
+#     return records
+
+# def query_from_db(query="SELECT distinct  project FROM dom"):
+#     with open("../config.json") as f:
+#         config = json.load(f)
+#     with SSHTunnelForwarder(
+#             ('dompm', 22),
+#             ssh_password=config["SSH_PASSWORD"],
+#             ssh_username=config["SSH_USERNAME"],
+#             remote_bind_address=('127.0.0.1', 5432)) as server:
+#         conn = psycopg2.connect("dbname=dom user=postgres password=" + config["DB_PASSWORD"], port=server.local_bind_port)
+#         cur = conn.cursor()
+#         cur.execute(query)
+#     records = cur.fetchall()
+#     return records
+
+
+
